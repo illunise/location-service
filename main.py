@@ -60,7 +60,8 @@ def get_latest_location(user_id: str):
         return {
             "latitude": row[0],
             "longitude": row[1],
-            "timestamp": row[2]
+            "timestamp": row[2],
+            "battery": row[3]
         }
 
     return {"status": "not found"}
