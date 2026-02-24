@@ -85,12 +85,25 @@ async def track(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_location(latitude=lat, longitude=lon)
 
         # Send device info
-        await update.message.reply_text(
-            f"📱 Device: {user_id}\n"
+        if battery >= 70:
+            battery_icon = "🟢"
+        elif battery >= 30:
+            battery_icon = "🟡"
+        else:
+            battery_icon = "🔴"
+
+        message = (
+            "━━━━━━━━━━━━━━━\n"
+            "📍 <b>LIVE TRACKING STATUS</b>\n"
+            "━━━━━━━━━━━━━━━\n\n"
+            f"📱 <b>Device:</b> {user_id}\n"
             f"{status}\n"
-            f"🔋 Battery: {battery}%\n"
-            f"⏱ Updated: {time_text}"
+            f"{battery_icon} <b>Battery:</b> {battery}%\n"
+            f"⏱ <b>Updated:</b> {time_text}\n\n"
+            "━━━━━━━━━━━━━━━"
         )
+
+        await update.message.reply_text(message, parse_mode="HTML")
 
     except Exception as e:
         await update.message.reply_text(f"⚠ Error: {e}")
