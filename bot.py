@@ -1,10 +1,11 @@
+import gmplot
 import requests
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
-    ContextTypes,
+    ContextTypes, CallbackContext,
 )
 
 # ==========================
@@ -46,6 +47,58 @@ def calculate_status(timestamp_str):
 
     except Exception:
         return "Unknown", "Unknown"
+
+def format_time(ts: str):
+    dt = datetime.fromisoformat(ts)
+    # IST timezone (+5:30)
+    ist = dt + timedelta(hours=5, minutes=30)
+    return ist.strftime("%d-%b-%Y %I:%M:%S %p IST")
+
+
+def route_map(update: Update, context: CallbackContext):
+    user_id = context.args[0] if context.args else None
+    minutes = int(context.args[1]) if len(context.args) > 1 else 60
+
+    if not user_id:
+        update.message.reply_text("Usage: /historymap <user_id> [minutes]")
+        return
+
+    # Fetch history
+    r = requests.get(f"{API_BASE}/history/{user_id}?minutes={minutes}").json()
+    if "status" in r:
+        update.message.reply_text(f"No route data for {user_id} in last {minutes} minutes")
+        return
+
+    points = r["points"]
+
+    # Extract coordinates
+    lats = [p["latitude"] for p in points]
+    lngs = [p["longitude"] for p in points]
+
+    if not lats or not lngs:
+        update.message.reply_text("No coordinates found.")
+        return
+
+    # Create GMPlot map centered at first point
+    gmap = gmplot.GoogleMapPlotter(lats[0], lngs[0], 15)
+
+    # Draw route polyline
+    gmap.plot(lats, lngs, "blue", edge_width=3)
+
+    # Add markers
+    for i, (lat, lng, p) in enumerate(zip(lats, lngs, points)):
+        time_str = format_time(p["timestamp"])
+        color = "green" if i == len(lats) - 1 else "red"  # last = current
+        gmap.marker(lat, lng, color=color, title=time_str)
+
+    # Save HTML map
+    html_file = f"{user_id}_map.html"
+    gmap.draw(html_file)
+
+    # Convert HTML map to image (via web rendering)
+    # For simplicity, use web browser screenshot or third-party tool
+    # Here we just send HTML (can open in browser)
+    update.message.reply_text(f"Map generated: open {html_file} in browser")
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -114,6 +167,7 @@ def main():
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("track", track))
+    app.add_handler(CommandHandler("history", route_map()))
 
     print("🤖 Tracker Bot Running...")
     app.run_polling()

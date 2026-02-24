@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from fastapi.responses import HTMLResponse
 
 app = FastAPI()
@@ -108,6 +108,30 @@ def map_view():
     <div id="map" style="height: 90vh; width: 100%;"></div>
 
     <script>
+    
+    async function loadHistory() {
+
+    const response = await fetch("/history/manish_phone?minutes=60");
+    const data = await response.json();
+
+    if (!data.points) return;
+
+    const path = data.points.map(p => ({
+        lat: p.latitude,
+        lng: p.longitude
+    }));
+
+    const routeLine = new google.maps.Polyline({
+        path: path,
+        geodesic: true,
+        strokeColor: "#007bff",
+        strokeOpacity: 1.0,
+        strokeWeight: 4,
+    });
+
+    routeLine.setMap(map);
+}
+
         let map;
         let markers = {};
 
@@ -142,6 +166,9 @@ def map_view():
 
                             const dateObj = new Date(device.timestamp);
 const now = new Date();
+
+loadHistory();
+
 
 // Calculate difference in seconds
 const diffSeconds = Math.floor((now - dateObj) / 1000);
@@ -195,3 +222,33 @@ markers[device.user_id] = marker;
 </body>
 </html>
 """
+
+@app.get("/history/{user_id}")
+def get_history(user_id: str, minutes: int = 60):
+
+    cursor.execute(
+        """
+        SELECT latitude, longitude, timestamp
+        FROM locations
+        WHERE user_id = ?
+        AND timestamp >= datetime('now', ?)
+        ORDER BY timestamp ASC
+        """,
+        (user_id, f'-{minutes} minutes')
+    )
+
+    rows = cursor.fetchall()
+
+    if not rows:
+        return {"status": "no data"}
+
+    return {
+        "points": [
+            {
+                "latitude": r[0],
+                "longitude": r[1],
+                "timestamp": r[2]
+            }
+            for r in rows
+        ]
+    }
