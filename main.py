@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi.responses import HTMLResponse
 
 app = FastAPI()
@@ -30,7 +30,7 @@ class Location(BaseModel):
 
 @app.post("/update-location")
 def update_location(loc: Location):
-    timestamp = datetime.now().isoformat()
+    timestamp = datetime.now(timezone.utc).isoformat()
 
     cursor.execute(
         "INSERT INTO locations (user_id, latitude, longitude, timestamp) VALUES (?, ?, ?, ?)",
