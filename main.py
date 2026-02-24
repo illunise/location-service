@@ -3,7 +3,6 @@ from pydantic import BaseModel
 import sqlite3
 from datetime import datetime
 from fastapi.responses import HTMLResponse
-from sqlalchemy import text
 
 app = FastAPI()
 
@@ -61,25 +60,29 @@ def get_latest_location(user_id: str):
 
 @app.get("/locations")
 def get_locations():
-    query = text("""
-        SELECT user_id, latitude, longitude, created_at
+    cursor.execute("""
+        SELECT user_id, latitude, longitude, timestamp
         FROM locations
-        ORDER BY created_at DESC
+        ORDER BY id DESC
     """)
 
-    result = cursor.execute(query).fetchall()
+    result = cursor.fetchall()
 
     latest = {}
+
     for row in result:
-        if row.user_id not in latest:
-            latest[row.user_id] = {
-                "user_id": row.user_id,
-                "latitude": row.latitude,
-                "longitude": row.longitude,
-                "created_at": str(row.created_at)
+        user_id, latitude, longitude, timestamp = row
+
+        if user_id not in latest:
+            latest[user_id] = {
+                "user_id": user_id,
+                "latitude": latitude,
+                "longitude": longitude,
+                "timestamp": timestamp
             }
 
     return list(latest.values())
+
 
 
 @app.get("/map", response_class=HTMLResponse)
