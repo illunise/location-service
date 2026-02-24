@@ -26,6 +26,7 @@ class Location(BaseModel):
     user_id: str
     latitude: float
     longitude: float
+    battery: int
 
 
 @app.post("/update-location")
@@ -33,8 +34,8 @@ def update_location(loc: Location):
     timestamp = datetime.now(timezone.utc).isoformat()
 
     cursor.execute(
-        "INSERT INTO locations (user_id, latitude, longitude, timestamp) VALUES (?, ?, ?, ?)",
-        (loc.user_id, loc.latitude, loc.longitude, timestamp)
+        "INSERT INTO locations (user_id, latitude, longitude, timestamp, battery) VALUES (?, ?, ?, ?, ?)",
+        (loc.user_id, loc.latitude, loc.longitude, timestamp, loc.battery)
     )
     conn.commit()
 
@@ -68,7 +69,7 @@ def get_latest_location(user_id: str):
 @app.get("/locations")
 def get_locations():
     cursor.execute("""
-        SELECT user_id, latitude, longitude, timestamp
+        SELECT user_id, latitude, longitude, timestamp, battery
         FROM locations
         ORDER BY id DESC
     """)
@@ -77,14 +78,15 @@ def get_locations():
     latest = {}
 
     for row in result:
-        user_id, latitude, longitude, timestamp = row
+        user_id, latitude, longitude, timestamp, battery = row
 
         if user_id not in latest:
             latest[user_id] = {
                 "user_id": user_id,
                 "latitude": latitude,
                 "longitude": longitude,
-                "timestamp": timestamp
+                "timestamp": timestamp,
+                "battery": battery
             }
 
     return list(latest.values())
@@ -138,27 +140,50 @@ def map_view():
                             });
 
                             const dateObj = new Date(device.timestamp);
+const now = new Date();
 
-const formattedTime = dateObj.toLocaleString("en-IN", {
-    timeZone: "Asia/Kolkata",
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true
-});
+// Calculate difference in seconds
+const diffSeconds = Math.floor((now - dateObj) / 1000);
+
+let timeText;
+if (diffSeconds < 60) {
+    timeText = diffSeconds + " seconds ago";
+} else if (diffSeconds < 3600) {
+    timeText = Math.floor(diffSeconds / 60) + " minutes ago";
+} else {
+    timeText = Math.floor(diffSeconds / 3600) + " hours ago";
+}
+
+// Device status logic
+let statusText;
+let statusColor;
+
+if (diffSeconds <= 30) {
+    statusText = "Online";
+    statusColor = "green";
+} else {
+    statusText = "Offline";
+    statusColor = "red";
+}
 
 const infoWindow = new google.maps.InfoWindow({
-    content: "<b>" + device.user_id + "</b><br>Last updated: " + formattedTime + " IST"
+    content: `
+        <b>${device.user_id}</b><br>
+        Status: <span style="color:${statusColor}; font-weight:bold;">
+            ${statusText}
+        </span><br>
+        Battery: 🔋 ${device.battery}%<br>
+        Updated: ${timeText}
+    `
 });
 
 
-                            marker.addListener("click", function() {
-                                infoWindow.open(map, marker);
-                            });
+marker.addListener("click", function() {
+    infoWindow.open(map, marker);
+});
 
-                            markers[device.user_id] = marker;
+markers[device.user_id] = marker;
+
                         }
                     });
                 });
