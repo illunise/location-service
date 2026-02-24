@@ -46,7 +46,7 @@ def update_location(loc: Location):
 def get_latest_location(user_id: str):
     cursor.execute(
         """
-        SELECT latitude, longitude, timestamp
+        SELECT latitude, longitude, timestamp, battery
         FROM locations
         WHERE user_id=?
         ORDER BY id DESC
