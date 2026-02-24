@@ -44,7 +44,13 @@ def update_location(loc: Location):
 @app.get("/latest-location/{user_id}")
 def get_latest_location(user_id: str):
     cursor.execute(
-        "SELECT latitude, longitude, timestamp FROM locations WHERE user_id=? ORDER BY id DESC LIMIT 1",
+        """
+        SELECT latitude, longitude, timestamp
+        FROM locations
+        WHERE user_id=?
+        ORDER BY id DESC
+        LIMIT 1
+        """,
         (user_id,)
     )
     row = cursor.fetchone()
@@ -58,6 +64,7 @@ def get_latest_location(user_id: str):
 
     return {"status": "not found"}
 
+
 @app.get("/locations")
 def get_locations():
     cursor.execute("""
@@ -67,7 +74,6 @@ def get_locations():
     """)
 
     result = cursor.fetchall()
-
     latest = {}
 
     for row in result:
@@ -84,73 +90,80 @@ def get_locations():
     return list(latest.values())
 
 
-
 @app.get("/map", response_class=HTMLResponse)
 def map_view():
     return """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Family Safety Map</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <script src="https://maps.googleapis.com/maps/api/js"></script>
-    </head>
-    <body>
-        <h2>Live Location Tracking</h2>
-        <div id="map" style="height: 90vh; width: 100%;"></div>
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Family Safety Map</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://maps.googleapis.com/maps/api/js"></script>
+</head>
+<body>
+    <h2>Live Location Tracking</h2>
+    <div id="map" style="height: 90vh; width: 100%;"></div>
 
-        <script>
-            let map;
-            let markers = {};
+    <script>
+        let map;
+        let markers = {};
 
-            function initMap() {
-                map = new google.maps.Map(document.getElementById("map"), {
-                    zoom: 15,
-                    center: { lat: 20.5937, lng: 78.9629 }
-                });
+        function initMap() {
+            map = new google.maps.Map(document.getElementById("map"), {
+                zoom: 15,
+                center: { lat: 20.5937, lng: 78.9629 }
+            });
 
-                fetchLocations();
-                setInterval(fetchLocations, 5000);
-            }
+            fetchLocations();
+            setInterval(fetchLocations, 5000);
+        }
 
-            function fetchLocations() {
-                fetch("/locations")
-                    .then(response => response.json())
-                    .then(data => {
-                        data.forEach(device => {
-                            const position = {
-                                lat: device.latitude,
-                                lng: device.longitude
-                            };
+        function fetchLocations() {
+            fetch("/locations")
+                .then(response => response.json())
+                .then(data => {
+                    data.forEach(device => {
+                        const position = {
+                            lat: device.latitude,
+                            lng: device.longitude
+                        };
 
-                            if (markers[device.user_id]) {
-                                markers[device.user_id].setPosition(position);
-                            } else {
-                                const marker = new google.maps.Marker({
-    position: position,
-    map: map,
-    title: device.user_id
-});
+                        if (markers[device.user_id]) {
+                            markers[device.user_id].setPosition(position);
+                        } else {
+                            const marker = new google.maps.Marker({
+                                position: position,
+                                map: map,
+                                title: device.user_id
+                            });
 
-const infoWindow = new google.maps.InfoWindow({
-    content: device.user_id + "<br>Last updated: " + device.timestamp
-});
+                            const dateObj = new Date(device.timestamp);
 
-marker.addListener("click", function() {
-    infoWindow.open(map, marker);
-});
+                            const formattedTime = dateObj.toLocaleString("en-IN", {
+                                day: "2-digit",
+                                month: "short",
+                                year: "numeric",
+                                hour: "numeric",
+                                minute: "2-digit",
+                                hour12: true
+                            });
 
-markers[device.user_id] = marker;
+                            const infoWindow = new google.maps.InfoWindow({
+                                content: "<b>" + device.user_id + "</b><br>Last updated: " + formattedTime
+                            });
 
-                            }
+                            marker.addListener("click", function() {
+                                infoWindow.open(map, marker);
+                            });
 
-                            
-                        });
+                            markers[device.user_id] = marker;
+                        }
                     });
-            }
+                });
+        }
 
-            window.onload = initMap;
-        </script>
-    </body>
-    </html>
-    """
+        window.onload = initMap;
+    </script>
+</body>
+</html>
+"""
