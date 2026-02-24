@@ -139,18 +139,20 @@ def map_view():
 
                             const dateObj = new Date(device.timestamp);
 
-                            const formattedTime = dateObj.toLocaleString("en-IN", {
-                                day: "2-digit",
-                                month: "short",
-                                year: "numeric",
-                                hour: "numeric",
-                                minute: "2-digit",
-                                hour12: true
-                            });
+const formattedTime = dateObj.toLocaleString("en-IN", {
+    timeZone: "Asia/Kolkata",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true
+});
 
-                            const infoWindow = new google.maps.InfoWindow({
-                                content: "<b>" + device.user_id + "</b><br>Last updated: " + formattedTime
-                            });
+const infoWindow = new google.maps.InfoWindow({
+    content: "<b>" + device.user_id + "</b><br>Last updated: " + formattedTime + " IST"
+});
+
 
                             marker.addListener("click", function() {
                                 infoWindow.open(map, marker);
