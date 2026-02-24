@@ -126,14 +126,25 @@ def map_view():
                             if (markers[device.user_id]) {
                                 markers[device.user_id].setPosition(position);
                             } else {
-                                markers[device.user_id] = new google.maps.Marker({
-                                    position: position,
-                                    map: map,
-                                    title: device.user_id
-                                });
+                                const marker = new google.maps.Marker({
+    position: position,
+    map: map,
+    title: device.user_id
+});
+
+const infoWindow = new google.maps.InfoWindow({
+    content: device.user_id + "<br>Last updated: " + device.timestamp
+});
+
+marker.addListener("click", function() {
+    infoWindow.open(map, marker);
+});
+
+markers[device.user_id] = marker;
+
                             }
 
-                            map.setCenter(position);
+                            
                         });
                     });
             }
