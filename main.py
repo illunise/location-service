@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 import sqlite3
 from datetime import datetime
+from fastapi.responses import HTMLResponse
 from sqlalchemy import text
 
 app = FastAPI()
