@@ -1,12 +1,12 @@
-import gmplot
+import asyncio
 import requests
 from datetime import datetime, timezone, timedelta
-from telegram import Update
-from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    ContextTypes, CallbackContext,
-)
+from telegram import Update, InputFile
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+import gmplot
+import os
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
 
 # ==========================
 # CONFIG
@@ -18,24 +18,14 @@ DEFAULT_DEVICE = "manish_phone"
 
 
 def calculate_status(timestamp_str):
-    """
-    Returns:
-        status_text
-        time_text
-    """
+    """Returns status and "updated x seconds/minutes ago" text"""
     try:
         device_time = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
         now = datetime.now(timezone.utc)
-
         diff = (now - device_time).total_seconds()
 
-        # Online logic
-        if diff <= 30:
-            status = "🟢 Online"
-        else:
-            status = "🔴 Offline"
+        status = "🟢 Online" if diff <= 30 else "🔴 Offline"
 
-        # Time ago formatting
         if diff < 60:
             time_text = f"{int(diff)} seconds ago"
         elif diff < 3600:
@@ -44,84 +34,32 @@ def calculate_status(timestamp_str):
             time_text = f"{int(diff // 3600)} hours ago"
 
         return status, time_text
-
     except Exception:
         return "Unknown", "Unknown"
 
+
 def format_time(ts: str):
+    """Format timestamp in IST"""
     dt = datetime.fromisoformat(ts)
-    # IST timezone (+5:30)
     ist = dt + timedelta(hours=5, minutes=30)
     return ist.strftime("%d-%b-%Y %I:%M:%S %p IST")
-
-
-def route_map(update: Update, context: CallbackContext):
-    user_id = context.args[0] if context.args else None
-    minutes = int(context.args[1]) if len(context.args) > 1 else 60
-
-    if not user_id:
-        update.message.reply_text("Usage: /historymap <user_id> [minutes]")
-        return
-
-    # Fetch history
-    r = requests.get(f"{API_BASE}/history/{user_id}?minutes={minutes}").json()
-    if "status" in r:
-        update.message.reply_text(f"No route data for {user_id} in last {minutes} minutes")
-        return
-
-    points = r["points"]
-
-    # Extract coordinates
-    lats = [p["latitude"] for p in points]
-    lngs = [p["longitude"] for p in points]
-
-    if not lats or not lngs:
-        update.message.reply_text("No coordinates found.")
-        return
-
-    # Create GMPlot map centered at first point
-    gmap = gmplot.GoogleMapPlotter(lats[0], lngs[0], 15)
-
-    # Draw route polyline
-    gmap.plot(lats, lngs, "blue", edge_width=3)
-
-    # Add markers
-    for i, (lat, lng, p) in enumerate(zip(lats, lngs, points)):
-        time_str = format_time(p["timestamp"])
-        color = "green" if i == len(lats) - 1 else "red"  # last = current
-        gmap.marker(lat, lng, color=color, title=time_str)
-
-    # Save HTML map
-    html_file = f"{user_id}_map.html"
-    gmap.draw(html_file)
-
-    # Convert HTML map to image (via web rendering)
-    # For simplicity, use web browser screenshot or third-party tool
-    # Here we just send HTML (can open in browser)
-    update.message.reply_text(f"Map generated: open {html_file} in browser")
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "📍 Family Tracker Bot\n\n"
-        "Use /track to get latest device location."
+        "Commands:\n"
+        "/track [device] - Latest location\n"
+        "/history [device] [minutes] - Show route history map"
     )
 
 
 async def track(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    # Allow: /track or /track device_name
-    if context.args:
-        user_id = context.args[0]
-    else:
-        user_id = DEFAULT_DEVICE
-
+    user_id = context.args[0] if context.args else DEFAULT_DEVICE
     try:
-        response = requests.get(
-            f"{API_BASE}/latest-location/{user_id}",
-            timeout=10
+        data = await asyncio.to_thread(
+            lambda: requests.get(f"{API_BASE}/latest-location/{user_id}", timeout=10).json()
         )
-        data = response.json()
 
         if "latitude" not in data:
             await update.message.reply_text("❌ No location found.")
@@ -134,17 +72,25 @@ async def track(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         status, time_text = calculate_status(timestamp)
 
-        # Send live map pin
+        # Battery icon
+        try:
+            battery_val = int(battery)
+        except:
+            battery_val = -1
+
+        if battery_val >= 70:
+            battery_icon = "🟢"
+        elif battery_val >= 30:
+            battery_icon = "🟡"
+        elif battery_val >= 0:
+            battery_icon = "🔴"
+        else:
+            battery_icon = "❌"
+
+        # Send location pin
         await update.message.reply_location(latitude=lat, longitude=lon)
 
         # Send device info
-        if battery >= 70:
-            battery_icon = "🟢"
-        elif battery >= 30:
-            battery_icon = "🟡"
-        else:
-            battery_icon = "🔴"
-
         message = (
             "━━━━━━━━━━━━━━━\n"
             "📍 <b>LIVE TRACKING STATUS</b>\n"
@@ -155,19 +101,69 @@ async def track(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"⏱ <b>Updated:</b> {time_text}\n\n"
             "━━━━━━━━━━━━━━━"
         )
-
         await update.message.reply_text(message, parse_mode="HTML")
 
     except Exception as e:
         await update.message.reply_text(f"⚠ Error: {e}")
 
 
+async def history(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = context.args[0] if context.args else DEFAULT_DEVICE
+    minutes = int(context.args[1]) if len(context.args) > 1 else 60
+
+    try:
+        r = await asyncio.to_thread(
+            lambda: requests.get(f"{API_BASE}/history/{user_id}?minutes={minutes}", timeout=10).json()
+        )
+
+        if "status" in r or not r.get("points"):
+            await update.message.reply_text(f"No route data for {user_id} in last {minutes} minutes")
+            return
+
+        points = r["points"]
+        lats = [p["latitude"] for p in points]
+        lngs = [p["longitude"] for p in points]
+
+        # Generate GMPlot map
+        gmap = gmplot.GoogleMapPlotter(lats[0], lngs[0], 15)
+        gmap.plot(lats, lngs, "blue", edge_width=3)
+        for i, (lat, lng, p) in enumerate(zip(lats, lngs, points)):
+            time_str = format_time(p["timestamp"])
+            color = "green" if i == len(lats) - 1 else "red"
+            gmap.marker(lat, lng, color=color, title=time_str)
+
+        html_file = f"{user_id}_map.html"
+        img_file = f"{user_id}_map.png"
+        gmap.draw(html_file)
+
+        # Convert HTML to PNG using Selenium headless Chrome
+        chrome_options = Options()
+        chrome_options.add_argument("--headless")
+        chrome_options.add_argument("--disable-gpu")
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--window-size=1200,800")
+        driver = webdriver.Chrome(options=chrome_options)
+        driver.get(f"file://{os.path.abspath(html_file)}")
+        await asyncio.sleep(2)  # wait for map to render
+        driver.save_screenshot(img_file)
+        driver.quit()
+
+        # Send PNG to Telegram
+        await update.message.reply_photo(photo=InputFile(img_file))
+
+        # Cleanup
+        os.remove(html_file)
+        os.remove(img_file)
+
+    except Exception as e:
+        await update.message.reply_text(f"⚠ Error generating history map: {e}")
+
+
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
-
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("track", track))
-    app.add_handler(CommandHandler("history", route_map()))
+    app.add_handler(CommandHandler("history", history))
 
     print("🤖 Tracker Bot Running...")
     app.run_polling()
