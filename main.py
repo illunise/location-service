@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 import sqlite3
 from datetime import datetime
+from sqlalchemy import text
 
 app = FastAPI()
 
@@ -56,3 +57,85 @@ def get_latest_location(user_id: str):
         }
 
     return {"status": "not found"}
+
+@app.get("/locations")
+def get_locations():
+    query = text("""
+        SELECT user_id, latitude, longitude, created_at
+        FROM locations
+        ORDER BY created_at DESC
+    """)
+
+    result = cursor.execute(query).fetchall()
+
+    latest = {}
+    for row in result:
+        if row.user_id not in latest:
+            latest[row.user_id] = {
+                "user_id": row.user_id,
+                "latitude": row.latitude,
+                "longitude": row.longitude,
+                "created_at": str(row.created_at)
+            }
+
+    return list(latest.values())
+
+
+@app.get("/map", response_class=HTMLResponse)
+def map_view():
+    return """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Family Safety Map</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <script src="https://maps.googleapis.com/maps/api/js"></script>
+    </head>
+    <body>
+        <h2>Live Location Tracking</h2>
+        <div id="map" style="height: 90vh; width: 100%;"></div>
+
+        <script>
+            let map;
+            let markers = {};
+
+            function initMap() {
+                map = new google.maps.Map(document.getElementById("map"), {
+                    zoom: 15,
+                    center: { lat: 20.5937, lng: 78.9629 }
+                });
+
+                fetchLocations();
+                setInterval(fetchLocations, 5000);
+            }
+
+            function fetchLocations() {
+                fetch("/locations")
+                    .then(response => response.json())
+                    .then(data => {
+                        data.forEach(device => {
+                            const position = {
+                                lat: device.latitude,
+                                lng: device.longitude
+                            };
+
+                            if (markers[device.user_id]) {
+                                markers[device.user_id].setPosition(position);
+                            } else {
+                                markers[device.user_id] = new google.maps.Marker({
+                                    position: position,
+                                    map: map,
+                                    title: device.user_id
+                                });
+                            }
+
+                            map.setCenter(position);
+                        });
+                    });
+            }
+
+            window.onload = initMap;
+        </script>
+    </body>
+    </html>
+    """
