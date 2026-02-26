@@ -77,53 +77,60 @@ async def devices(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def track(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = context.args[0] if context.args else DEFAULT_DEVICE
     try:
-        data = await asyncio.to_thread(
-            lambda: requests.get(f"{API_BASE}/latest-location/{user_id}", timeout=10).json()
-        )
-
-        if "latitude" not in data:
-            await update.message.reply_text("❌ No location found.")
-            return
-
-        lat = data["latitude"]
-        lon = data["longitude"]
-        battery = data.get("battery", "N/A")
-        timestamp = data["timestamp"]
-
-        status, time_text = calculate_status(timestamp)
-
-        # Battery icon
-        try:
-            battery_val = int(battery)
-        except:
-            battery_val = -1
-
-        if battery_val >= 70:
-            battery_icon = "🟢"
-        elif battery_val >= 30:
-            battery_icon = "🟡"
-        elif battery_val >= 0:
-            battery_icon = "🔴"
+        if context.args:
+            user_id = context.args[0]
+            locations = [await asyncio.to_thread(
+                lambda: requests.get(f"{API_BASE}/latest-location/{user_id}", timeout=10).json()
+            )]
+            if "latitude" not in locations[0]:
+                await update.message.reply_text("❌ No location found.")
+                return
+            locations[0]["user_id"] = user_id
         else:
-            battery_icon = "❌"
+            locations = await asyncio.to_thread(
+                lambda: requests.get(f"{API_BASE}/locations", timeout=10).json()
+            )
+            if not isinstance(locations, list) or not locations:
+                await update.message.reply_text("❌ No locations found.")
+                return
 
-        # Send location pin
-        await update.message.reply_location(latitude=lat, longitude=lon)
+        for data in locations:
+            lat = data["latitude"]
+            lon = data["longitude"]
+            user_id = data.get("user_id", DEFAULT_DEVICE)
+            battery = data.get("battery", "N/A")
+            timestamp = data["timestamp"]
 
-        # Send device info
-        message = (
-            "━━━━━━━━━━━━━━━\n"
-            "📍 <b>LIVE TRACKING STATUS</b>\n"
-            "━━━━━━━━━━━━━━━\n\n"
-            f"📱 <b>Device:</b> {user_id}\n"
-            f"{status}\n"
-            f"{battery_icon} <b>Battery:</b> {battery}%\n"
-            f"⏱ <b>Updated:</b> {time_text}\n\n"
-            "━━━━━━━━━━━━━━━"
-        )
-        await update.message.reply_text(message, parse_mode="HTML")
+            status, time_text = calculate_status(timestamp)
+
+            try:
+                battery_val = int(battery)
+            except:
+                battery_val = -1
+
+            if battery_val >= 70:
+                battery_icon = "🟢"
+            elif battery_val >= 30:
+                battery_icon = "🟡"
+            elif battery_val >= 0:
+                battery_icon = "🔴"
+            else:
+                battery_icon = "❌"
+
+            await update.message.reply_location(latitude=lat, longitude=lon)
+
+            message = (
+                "━━━━━━━━━━━━━━━\n"
+                "📍 <b>LIVE TRACKING STATUS</b>\n"
+                "━━━━━━━━━━━━━━━\n\n"
+                f"📱 <b>Device:</b> {user_id}\n"
+                f"{status}\n"
+                f"{battery_icon} <b>Battery:</b> {battery}%\n"
+                f"⏱ <b>Updated:</b> {time_text}\n\n"
+                "━━━━━━━━━━━━━━━"
+            )
+            await update.message.reply_text(message, parse_mode="HTML")
 
     except Exception as e:
         await update.message.reply_text(f"⚠ Error: {e}")
