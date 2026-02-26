@@ -49,13 +49,35 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "📍 Family Tracker Bot\n\n"
         "Commands:\n"
+        "/devices - Show available device IDs\n"
         "/track [device] - Latest location\n"
         "/history [device] [minutes] - Show route history map"
     )
 
 
+async def devices(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        data = await asyncio.to_thread(
+            lambda: requests.get(f"{API_BASE}/locations", timeout=10).json()
+        )
+
+        if not isinstance(data, list) or not data:
+            await update.message.reply_text("No devices found.")
+            return
+
+        ids = [d.get("user_id") for d in data if d.get("user_id")]
+        if not ids:
+            await update.message.reply_text("No device IDs found.")
+            return
+
+        msg = "Available devices:\n" + "\n".join(f"- {device_id}" for device_id in ids)
+        await update.message.reply_text(msg)
+    except Exception as e:
+        await update.message.reply_text(f"⚠ Error fetching devices: {e}")
+
+
 async def track(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = "context.args[0] if context.args else DEFAULT_DEVICE"
+    user_id = context.args[0] if context.args else DEFAULT_DEVICE
     try:
         data = await asyncio.to_thread(
             lambda: requests.get(f"{API_BASE}/latest-location/{user_id}", timeout=10).json()
@@ -162,6 +184,7 @@ async def history(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("devices", devices))
     app.add_handler(CommandHandler("track", track))
     app.add_handler(CommandHandler("history", history))
 
