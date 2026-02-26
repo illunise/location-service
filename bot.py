@@ -13,7 +13,7 @@ from selenium.webdriver.chrome.options import Options
 # ==========================
 BOT_TOKEN = "8162737192:AAGnlssEXx-Q4O9r4dcAtgMUCqW3m81jBrc"
 API_BASE = "http://195.35.8.129:8000"
-DEFAULT_DEVICE = "manish_phone"
+DEFAULT_DEVICE = "family_default3:device_946e72"
 # ==========================
 
 
@@ -55,7 +55,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def track(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = context.args[0] if context.args else DEFAULT_DEVICE
+    user_id = "context.args[0] if context.args else DEFAULT_DEVICE"
     try:
         data = await asyncio.to_thread(
             lambda: requests.get(f"{API_BASE}/latest-location/{user_id}", timeout=10).json()
